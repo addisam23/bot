@@ -12,12 +12,31 @@ PAYMENT_CHANNEL = "@safonai"  # add payment channel here including the '@' sign
 OWNER_ID = 705635925  # write owner's user id here.. get it from @MissRose_Bot by /id
 CHANNELS = ["@safonai"]  # add channels to be checked here in the format - ["Channel 1", "Channel 2"]
 Daily_bonus = 0.00  # Put daily bonus amount here!
-Mini_Withdraw = 500  # remove 0 and add the minimum withdraw you want to set
-Per_Refer = 0.50  # add per refer bonus here
+Mini_Withdraw = 500  # minimum withdraw amount
+Per_Refer = 0.50  # per refer bonus
 
 bot = telebot.TeleBot(BOT_TOKEN)
-
 bonus = {}
+
+def load_users_data():
+    try:
+        with open('users.json', 'r') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return {
+            "total": 0,
+            "balance": {},
+            "wallet": {},
+            "referred": {},
+            "referby": {},
+            "checkin": {},
+            "DailyQuiz": {},
+            "totalwith": 0
+        }
+
+def save_users_data(data):
+    with open('users.json', 'w') as file:
+        json.dump(data, file)
 
 def check_payment_receipt(message):
     try:
@@ -56,11 +75,30 @@ def check_payment_receipt(message):
     except Exception as e:
         bot.send_message(message.chat.id, "⚠️*Something went wrong.*", parse_mode="Markdown")
         bot.send_message(OWNER_ID, "Your bot got an error fix it fast!\nError on command: check_payment_receipt\nError details: "+str(e))
-        return
 
 @bot.message_handler(func=lambda message: message.text and message.text.startswith("Payment Receipt:"))
 def payment_receipt_handler(message):
     check_payment_receipt(message)
+
+# Admin command to view dashboard
+@bot.message_handler(commands=['admin'])
+def admin_dashboard(message):
+    if message.chat.id == OWNER_ID:  # Check if the user is the admin
+        user_data = load_users_data()
+        total_users = user_data['total']
+        total_balance = sum(user_data['balance'].values())
+        total_withdrawn = user_data.get('totalwith', 0)
+
+        dashboard_message = (
+            f"*Admin Dashboard*\n"
+            f"Total Users: {total_users}\n"
+            f"Total Balance: {total_balance} {TOKEN}\n"
+            f"Total Withdrawn: {total_withdrawn} {TOKEN}\n"
+        )
+
+        bot.send_message(message.chat.id, dashboard_message, parse_mode='Markdown')
+    else:
+        bot.send_message(message.chat.id, "You do not have permission to access this command.")
 
 def withdraw_keyboard(user_id):
     keyboard = telebot.types.InlineKeyboardMarkup(row_width=2)
@@ -93,7 +131,7 @@ def menu(id):
 def start(message):
     try:
         user = str(message.chat.id)
-        data = json.load(open('users.json', 'r'))
+        data = load_users_data()
         if user not in data['referred']:
             data['referred'][user] = 0
             data['total'] += 1
@@ -111,8 +149,7 @@ def start(message):
             data['withd'][user] = 0
         if user not in data['id']:
             data['id'][user] = data['total']
-        json.dump(data, open('users.json', 'w'))
-        print(data)
+        save_users_data(data)
 
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton(text='🤼‍♂️ Joined', callback_data='check'))
@@ -124,7 +161,6 @@ def start(message):
     except Exception as e:
         bot.send_message(message.chat.id, "This command has an error, please wait for fixing by admin")
         bot.send_message(OWNER_ID, "Your bot got an error fix it fast!\n Error on command: " + message.text)
-        return
 
 @bot.callback_query_handler(func=lambda call: True)
 def query_handler(call):
@@ -132,7 +168,7 @@ def query_handler(call):
         ch = check(call.message.chat.id)
         if call.data == 'check':
             if ch:
-                data = json.load(open('users.json', 'r'))
+                data = load_users_data()
                 user_id = call.message.chat.id
                 bot.answer_callback_query(callback_query_id=call.id, text='✅ You joined. Now you can earn money')
                 bot.delete_message(call.message.chat.id, call.message.message_id)
@@ -140,7 +176,7 @@ def query_handler(call):
                     data['refer'][str(user_id)] = True
                     if str(user_id) not in data['referby']:
                         data['referby'][str(user_id)] = str(user_id)
-                        json.dump(data, open('users.json', 'w'))
+                        save_users_data(data)
                     if int(data['referby'][str(user_id)]) != user_id:
                         ref_id = data['referby'][str(user_id)]
                         ref = str(ref_id)
@@ -148,14 +184,14 @@ def query_handler(call):
                             data['balance'][ref] = 0
                         if ref not in data['referred']:
                             data['referred'][ref] = 0
-                        json.dump(data, open('users.json', 'w'))
+                        save_users_data(data)
                         data['balance'][ref] += Per_Refer
                         data['referred'][ref] += 1
                         bot.send_message(ref_id, f"*🏧 New Referral on Level 1, You Got : +{Per_Refer} {TOKEN}*", parse_mode="Markdown")
-                        json.dump(data, open('users.json', 'w'))
+                        save_users_data(data)
                         return menu(call.message.chat.id)
                     else:
-                        json.dump(data, open('users.json', 'w'))
+                        save_users_data(data)
                         return menu(call.message.chat.id)
             else:
                 bot.answer_callback_query(callback_query_id=call.id, text='❌ You are not Joined')
@@ -167,13 +203,12 @@ def query_handler(call):
     except Exception as e:
         bot.send_message(call.message.chat.id, "This command has an error, please wait for fixing by admin")
         bot.send_message(OWNER_ID, "Your bot got an error fix it fast!\n Error on command: " + call.data)
-        return
 
 @bot.message_handler(content_types=['text'])
 def send_text(message):
     try:
         if message.text == '🆔 Account':
-            data = json.load(open('users.json', 'r'))
+            data = load_users_data()
             accmsg = '*👮 User : {}\n\n⚙️ Wallet : *`{}`*\n\n💸 Balance : *`{}`* {}*'
             user_id = message.chat.id
             user = str(user_id)
@@ -183,7 +218,7 @@ def send_text(message):
             if user not in data['wallet']:
                 data['wallet'][user] = "none"
 
-            json.dump(data, open('users.json', 'w'))
+            save_users_data(data)
 
             balance = data['balance'][user]
             wallet = data['wallet'][user]
@@ -191,7 +226,7 @@ def send_text(message):
             bot.send_message(message.chat.id, msg, parse_mode="Markdown")
 
         if message.text == '🙌🏻 Referrals':
-            data = json.load(open('users.json', 'r'))
+            data = load_users_data()
             ref_msg = "*⏯️ Total Invites : {} Users\n\n👥 Referrals System\n\n1 Level:\n🥇 Level°1 - {} {}\n\n🔗 Referral Link ⬇️\n{}*"
             bot_name = bot.get_me().username
             user_id = message.chat.id
@@ -199,7 +234,7 @@ def send_text(message):
 
             if user not in data['referred']:
                 data['referred'][user] = 0
-            json.dump(data, open('users.json', 'w'))
+            save_users_data(data)
 
             ref_count = data['referred'][user]
             ref_link = 'https://telegram.me/{}?start={}'.format(bot_name, message.chat.id)
@@ -219,35 +254,32 @@ def send_text(message):
             user_id = message.chat.id
             user = str(user_id)
             cur_time = int((time.time()))
-            data = json.load(open('users.json', 'r'))
+            data = load_users_data()
             if (user_id not in bonus.keys()) or (cur_time - bonus[user_id] > 60 * 60 * 24):
                 data['balance'][user] += Daily_bonus
                 bot.send_message(user_id, f"Congrats you just received {Daily_bonus} {TOKEN}")
                 bonus[user_id] = cur_time
-                json.dump(data, open('users.json', 'w'))
+                save_users_data(data)
             else:
                 bot.send_message(message.chat.id, "❌*You can only take bonus once every 24 hours!*", parse_mode="Markdown")
-            return
 
         if message.text == "📊Statistics":
             user_id = message.chat.id
-            user = str(user_id)
-            data = json.load(open('users.json', 'r'))
+            data = load_users_data()
             msg = "*📊 Total members : {} Users\n\n🥊 Total successful Withdraw : {} {}*"
             msg = msg.format(data['total'], data.get('totalwith', 0), TOKEN)
             bot.send_message(user_id, msg, parse_mode="Markdown")
-            return
 
         if message.text == "💸 Withdraw":
             user_id = message.chat.id
             user = str(user_id)
 
-            data = json.load(open('users.json', 'r'))
+            data = load_users_data()
             if user not in data['balance']:
                 data['balance'][user] = 0
             if user not in data['wallet']:
                 data['wallet'][user] = "none"
-            json.dump(data, open('users.json', 'w'))
+            save_users_data(data)
 
             bal = data['balance'][user]
             wall = data['wallet'][user]
@@ -259,11 +291,9 @@ def send_text(message):
                 bot.register_next_step_handler(message, amo_with)
             else:
                 bot.send_message(user_id, f"_❌ Your balance is low, you should have at least {Mini_Withdraw} {TOKEN} to Withdraw_", parse_mode="Markdown")
-                return
     except Exception as e:
         bot.send_message(message.chat.id, "This command has an error, please wait for fixing by admin")
         bot.send_message(OWNER_ID, "Your bot got an error fix it fast!\n Error on command: " + message.text)
-        return
 
 def trx_address(message):
     try:
@@ -272,10 +302,10 @@ def trx_address(message):
         if len(message.text) == 34:
             user_id = message.chat.id
             user = str(user_id)
-            data = json.load(open('users.json', 'r'))
+            data = load_users_data()
             data['wallet'][user] = message.text
             bot.send_message(message.chat.id, "*💹 Your TRX wallet is set to " + data['wallet'][user] + "*", parse_mode="Markdown")
-            json.dump(data, open('users.json', 'w'))
+            save_users_data(data)
             return menu(message.chat.id)
         else:
             bot.send_message(message.chat.id, "*⚠️ It's Not a Valid TRX Address!*", parse_mode="Markdown")
@@ -283,19 +313,18 @@ def trx_address(message):
     except Exception as e:
         bot.send_message(message.chat.id, "This command has an error, please wait for fixing by admin")
         bot.send_message(OWNER_ID, "Your bot got an error fix it fast!\n Error on command: " + message.text)
-        return
 
 def amo_with(message):
     try:
         user_id = message.chat.id
         amo = message.text
         user = str(user_id)
-        data = json.load(open('users.json', 'r'))
+        data = load_users_data()
         if user not in data['balance']:
             data['balance'][user] = 0
         if user not in data['wallet']:
             data['wallet'][user] = "none"
-        json.dump(data, open('users.json', 'w'))
+        save_users_data(data)
 
         bal = data['balance'][user]
         wall = data['wallet'][user]
@@ -313,7 +342,7 @@ def amo_with(message):
         data['balance'][user] -= amo
         data['totalwith'] = data.get('totalwith', 0) + amo
         bot_name = bot.get_me().username
-        json.dump(data, open('users.json', 'w'))
+        save_users_data(data)
         bot.send_message(user_id, "✅* Withdraw is requested to our owner automatically\n\n💹 Payment Channel :- " + PAYMENT_CHANNEL + "*", parse_mode="Markdown")
 
         markupp = telebot.types.InlineKeyboardMarkup()
@@ -323,7 +352,6 @@ def amo_with(message):
     except Exception as e:
         bot.send_message(message.chat.id, "This command has an error, please wait for fixing by admin")
         bot.send_message(OWNER_ID, "Your bot got an error fix it fast!\n Error on command: " + message.text)
-        return
 
 if __name__ == '__main__':
     bot.polling(none_stop=True)
